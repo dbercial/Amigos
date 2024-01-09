@@ -9,8 +9,10 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import org.osmdroid.api.IMapController;
 import org.osmdroid.config.Configuration;
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
+import org.osmdroid.util.GeoPoint;
 import org.osmdroid.views.MapView;
 
 import java.util.ArrayList;
@@ -40,6 +42,7 @@ public class MainActivity extends AppCompatActivity{
                 // WRITE_EXTERNAL_STORAGE este permiso es necesario para guardar las imagenes del mapa
                 Manifest.permission.WRITE_EXTERNAL_STORAGE
         });
+        centrarMapaEnEuropa();
     }
 
     @Override
@@ -88,5 +91,13 @@ public class MainActivity extends AppCompatActivity{
                     permissionsToRequest.toArray(new String[0]),
                     REQUEST_PERMISSIONS_REQUEST_CODE);
         }
+    }
+    void centrarMapaEnEuropa() {
+        // Esta función mueve el centro del mapa a Paris y ajusta el zoom
+        // para que se vea Europa
+        IMapController mapController = map.getController();
+        mapController.setZoom(5.5);
+        GeoPoint startPoint = new GeoPoint(48.8583, 2.2944);
+        mapController.setCenter(startPoint);
     }
 }
