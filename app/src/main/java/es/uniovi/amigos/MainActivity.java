@@ -1,8 +1,11 @@
 package es.uniovi.amigos;
 import android.Manifest;
 import android.app.AlertDialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.location.Criteria;
 import android.location.Location;
@@ -18,10 +21,15 @@ import com.android.volley.VolleyError;
 import com.android.volley.toolbox.JsonArrayRequest;
 import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.Volley;
+import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.Task;
+import com.google.firebase.messaging.FirebaseMessaging;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 
 import org.json.JSONArray;
@@ -40,7 +48,6 @@ import java.util.TimerTask;
 
 public class MainActivity extends AppCompatActivity{
     private static final long UPDATE_PERIOD = 5000;
-
     private final int REQUEST_PERMISSIONS_REQUEST_CODE = 1;
     private MapView map = null;  // Este atributo guarda una referencia al objeto MapView
     // a través del cual podremos manipular el mapa que se muestre
@@ -51,9 +58,9 @@ public class MainActivity extends AppCompatActivity{
     String url3= "http://192.168.1.84:80/api/amigo/" + id;
     Timer timer = new Timer();
     TimerTask updateAmigos = new UpdateAmigosPosition();
-
     String mUserName = null;
-
+    String tokenGeneral = null;
+    BroadcastReceiver mHandlerForBroadcast;
     class UpdateAmigosPosition extends TimerTask {
         public void run() {
             getAmigosList();
@@ -82,22 +89,41 @@ public class MainActivity extends AppCompatActivity{
                 Manifest.permission.ACCESS_FINE_LOCATION
         });
         centrarMapaEnEuropa();
-        timer.scheduleAtFixedRate(updateAmigos, 0, UPDATE_PERIOD);
+        //timer.scheduleAtFixedRate(updateAmigos, 0, UPDATE_PERIOD);
         getAmigosList();
         SetupLocation();
         askUserName();
+        getFirebaseToken();
+        upDateServer();
+    }
+
+    private void upDateServer() {
+        mHandlerForBroadcast = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                System.out.println("Broadcast: received = " + intent.getAction());
+            }
+        };
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+                mHandlerForBroadcast,
+                new IntentFilter("updateFromServer"));
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        map.onResume();
+        map.onResume(); //needed for compass, my location overlays, v6.0.0 and up
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+                mHandlerForBroadcast,
+                new IntentFilter("updateFromServer"));
     }
 
     @Override
     public void onPause() {
+        LocalBroadcastManager.getInstance(this)
+                .unregisterReceiver(mHandlerForBroadcast);
         super.onPause();
-        map.onPause();
+        map.onPause();  //needed for compass, my location overlays, v6.0.0 and up
     }
 
     @Override
@@ -160,6 +186,7 @@ public class MainActivity extends AppCompatActivity{
                                 double longitud = obj.getDouble("longi");
                                 Amigo a = new Amigo(nombre, latitud, longitud);
                                 amigos.add(a);
+                                upDateServer();
                                 }
                         } catch(org.json.JSONException e){}
                     }
@@ -289,6 +316,7 @@ public class MainActivity extends AppCompatActivity{
                 System.out.println("Volley OK: " + response);
                 try {
                     id= response.getInt("id");
+                    updateDEviceToken();
                 } catch(org.json.JSONException e){}
             }
             },
@@ -302,7 +330,7 @@ public class MainActivity extends AppCompatActivity{
         queue.add(request);
     }
 
-    public void actualizaPosicion(double latitud, double longitud){
+    public void actualizarPosicion(double latitud, double longitud){
         if(id != -1){
             RequestQueue queue = Volley.newRequestQueue(this);
             try{
@@ -317,5 +345,36 @@ public class MainActivity extends AppCompatActivity{
             catch(org.json.JSONException e){}
         }
     }
+
+    public void getFirebaseToken() {
+        FirebaseMessaging.getInstance().getToken()
+                .addOnCompleteListener(new OnCompleteListener<String>() {
+                    @Override
+                    public void onComplete(@NonNull Task<String> task) {
+                        String token = task.getResult();
+                        System.out.println("FCM getFirebaseId() ->" + token);
+                        tokenGeneral = token;
+                    }
+                });
+    }
+
+    public void updateDEviceToken(){
+        if(id != -1){
+            getFirebaseToken();
+            if(tokenGeneral != null){
+                RequestQueue queue = Volley.newRequestQueue(this);
+                try{
+                    JSONObject jsonToSend = new JSONObject();
+                    jsonToSend.put("token", tokenGeneral);
+
+                    JsonObjectRequest objectRequest = new JsonObjectRequest(
+                            Request.Method.PUT,url3,jsonToSend,null,null);
+                    queue.add(objectRequest);
+                }
+                catch(org.json.JSONException e){}
+            }
+        }
+    }
+
 
 }
